@@ -115,6 +115,10 @@ def create_app(config=None):
     from reductus.web_gui.template_api import register_template_api
     register_template_api(app)
 
+    # Register file browser and export UX API
+    from reductus.web_gui.browser_api import register_browser_api
+    register_browser_api(app)
+
     return app
 
 if __name__ == '__main__':

@@ -81,8 +81,13 @@ let template = `
             <md-field>
             <label for="select_datasource">Data Sources</label>
             <md-select v-model="select_datasource" name="select_datasource" id="select_datasource">
-              <md-option v-for="source in datasources" :value="source">
-                {{source}}
+              <md-option
+                v-for="source in datasources"
+                :key="source.name"
+                :value="source.name"
+                :disabled="source.available === false"
+              >
+                {{source.name}}{{source.available === false ? ' (offline)' : ''}}
               </md-option>
             </md-select>
             </md-field>
@@ -197,11 +202,11 @@ export const VueMenu = {
   data: () => ({
     current_instrument: "ncnr.refl",
     instruments: ["ncnr.refl", "ncnr.sans", "ncnr.vsans"],
-    datasources: ["ncnr", "charlotte"],
+    datasources: [{ name: "ncnr", available: true }, { name: "charlotte", available: true }],
     categories: [],
     default_categories: [],
     category_keys: [],
-    select_datasource: "ncnr",
+    select_datasource: "",
     showNavigation: false,
     showSettingsHelp: false,
     showApiError: false,
@@ -249,6 +254,16 @@ export const VueMenu = {
     predefined_templates: {
       handler: function (val, oldVal) {
         this.predefined_template = val[0] || "";
+      },
+      deep: true
+    },
+    // When sources are populated/updated, default select to first available
+    datasources: {
+      handler: function(val) {
+        if (!this.select_datasource) {
+          let first = val.find(function(d) { return d.available !== false; });
+          this.select_datasource = first ? first.name : "";
+        }
       },
       deep: true
     }

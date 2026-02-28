@@ -12,22 +12,42 @@ def main():
     parser.add_argument('-c', '--config-file', type=str, help='path to JSON configuration to load')
     parser.add_argument('-i','--instruments', nargs='+', help='instruments to load (overrides config)')
     parser.add_argument('--cache-engine', type=str, default='memory', choices=['memory', 'diskcache', 'redis'], help='select cache engine (default is "memory", overrides config)')
+    parser.add_argument('--data-dir', dest='data_dirs', action='append', metavar='PATH',
+                        help='register a local directory as a named data source (repeatable)')
     args = parser.parse_args()
+
     if args.config_file is not None:
         import json
         config = json.loads(open(args.config_file, 'rt').read())
     else:
         from reductus.dataflow.configure import load_config
         config = load_config(name="config", fallback=True)
+
+    # CLI overrides (highest priority)
     if args.instruments is not None:
         config["instruments"] = args.instruments
     if args.cache_engine is not None:
         config.setdefault("cache", {})
         config["cache"]["engine"] = args.cache_engine
+
+    # Inject --data-dir entries
+    if args.data_dirs:
+        existing_names = {s["name"] for s in config.get("data_sources", [])}
+        for raw_path in args.data_dirs:
+            path = os.path.abspath(raw_path)
+            name = os.path.basename(path.rstrip("/\\")) or raw_path
+            if name not in existing_names:
+                config.setdefault("data_sources", []).append({
+                    "name": name,
+                    "url": "file:///",
+                    "start_path": path.replace("\\", "/"),
+                })
+                existing_names.add(name)
+
     # Strip "local" from data sources if running external
     if args.external:
         config["data_sources"] = [
-            d for d in config["data_sources"]
+            d for d in config.get("data_sources", [])
             if d["name"] != "local"
         ]
 

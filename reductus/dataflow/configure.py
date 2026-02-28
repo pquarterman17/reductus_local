@@ -23,18 +23,32 @@ def load_update(name="config_overrides"):
 def load_config(name="config", fallback=True):
     """
     Look for configurations defined in the configurations directory
-    if the name is not found, use "default_config" if fallback==True
+    if the name is not found, use "default_config" if fallback==True.
+    Overlays settings.json on top of the loaded config.
     """
     import importlib
 
     try:
         config_module = importlib.import_module("reductus.configurations.{name}".format(name=name))
-        return copy.deepcopy(config_module.config)
+        config = copy.deepcopy(config_module.config)
     except ImportError:
         if fallback:
-            return DEFAULT_CONFIG
+            config = copy.deepcopy(DEFAULT_CONFIG)
         else:
             raise
+
+    # Overlay settings.json — lower priority than CLI flags applied in run.py
+    try:
+        from reductus.userdata import load_settings
+        user_settings = load_settings()
+        _OVERLAY_KEYS = ("data_sources", "cache", "instruments", "force_IPV4")
+        for key in _OVERLAY_KEYS:
+            if key in user_settings:
+                config[key] = user_settings[key]
+    except Exception:
+        pass  # best-effort; never break startup
+
+    return config
 
 def apply_config(user_config=None, user_overrides=None):
     if user_config is not None:

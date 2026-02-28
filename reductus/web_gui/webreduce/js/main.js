@@ -110,15 +110,16 @@ window.onpopstate = async function (e) {
 }
 
 function add_datasource(sourcename, start_path_in="") {
-  let start_path = "";
   let datasource = app._datasources.find(d => (d.name == sourcename));
+  let start_path = "";
   if (start_path_in != "") {
     start_path = start_path_in;
-  }
-  else if (datasource && datasource.start_path) {
+  } else if (app._recent_paths && app._recent_paths[sourcename]) {
+    start_path = app._recent_paths[sourcename].join("/");
+  } else if (datasource && datasource.start_path) {
     start_path = datasource.start_path;
   }
-  let pathlist = start_path.split("/");
+  let pathlist = start_path ? start_path.split("/") : [];
   filebrowser.addDataSource(sourcename, pathlist);
 }
 
@@ -279,7 +280,13 @@ window.onload = async function () {
   async function list_datasources() {
     let datasources = await server_api.list_datasources();
     app._datasources = datasources;
-    vueMenu.instance.datasources = datasources.map(d => d.name);
+    // Pass full objects so menu can render availability (available: true until probed)
+    vueMenu.instance.datasources = datasources.map(d => ({ name: d.name, available: true }));
+    try {
+      app._recent_paths = await server_api.get_recent_paths();
+    } catch(e) {
+      app._recent_paths = {};
+    }
     return datasources
   }
 
@@ -387,7 +394,22 @@ window.onload = async function () {
     // want to be respectful there is no need to bother them any more.
   }
 
+  // New helper function
+  async function check_and_update_sources() {
+    try {
+      let statuses = await server_api.check_sources();
+      let updated = app._datasources.map(function(d) {
+        let s = statuses.find(function(st) { return st.name === d.name; });
+        return { name: d.name, available: s ? s.available : true };
+      });
+      vueMenu.instance.datasources = updated;
+    } catch(e) {
+      console.warn("check_sources failed:", e);
+    }
+  }
+
   await list_instruments();
   await list_datasources();
+  check_and_update_sources();   // fire-and-forget: non-blocking, grays out offline sources
   window.onpopstate();
 }

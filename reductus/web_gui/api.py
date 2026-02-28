@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import os
+import sys
 from pprint import pprint
 import json
 import traceback
@@ -27,13 +28,63 @@ def sorted_ls(path, show_hidden=False):
     mtime = lambda f: os.stat(os.path.join(path, f)).st_mtime
     return list(sorted(filter(lambda x: os.path.exists(os.path.join(path, x)) and not x.startswith("."), os.listdir(path)), key=mtime))
 
+def _build_local_path(pathlist):
+    """Build an absolute filesystem path from a pathlist, handling Windows drive letters."""
+    if sys.platform == "win32":
+        if not pathlist:
+            return None  # caller handles: list drives
+        first = pathlist[0]
+        if len(first) == 2 and first[1] == ':':
+            # Drive-letter root: "C:" -> "C:\", ["C:", "Users"] -> "C:\Users"
+            return os.path.join(first + "\\", *pathlist[1:]) if len(pathlist) > 1 else first + "\\"
+        return os.path.join(os.sep, *pathlist)
+    else:
+        return os.path.join(os.sep, *pathlist) if pathlist else os.sep
+
+
+def _list_windows_drives():
+    """Return available Windows drive letters, e.g. ["C:", "D:"].
+
+    Uses two methods:
+    1. Windows API GetLogicalDriveStringsW (catches most drives)
+    2. Fallback: try to access each letter A-Z (catches network/mapped drives)
+    """
+    import ctypes
+
+    # Method 1: Try Windows API first
+    try:
+        buf = ctypes.create_unicode_buffer(256)
+        ctypes.windll.kernel32.GetLogicalDriveStringsW(255, buf)
+        api_drives = set(e.rstrip("\\") for e in buf.value.split("\x00") if e)
+    except Exception:
+        api_drives = set()
+
+    # Method 2: Fallback - try accessing each drive letter
+    accessible_drives = set()
+    for letter in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':
+        drive = f"{letter}:"
+        try:
+            os.listdir(drive + "\\")
+            accessible_drives.add(drive)
+        except (OSError, FileNotFoundError, PermissionError):
+            pass
+
+    # Combine both methods and sort
+    all_drives = sorted(api_drives | accessible_drives)
+    return all_drives
+
+
 def local_file_metadata(pathlist):
-    # only absolute paths are supported:
-    path = os.path.join(os.sep, *pathlist)
+    # On Windows with empty pathlist, show drive letters as top-level "subdirs"
+    if sys.platform == "win32" and (not pathlist or pathlist == [""]):
+        return {"subdirs": _list_windows_drives(), "files": [], "pathlist": [], "files_metadata": {}}
+
+    path = _build_local_path(pathlist)
+    if path is None:
+        return {"subdirs": [], "files": [], "pathlist": pathlist, "files_metadata": {}}
+
     dirlisting = sorted_ls(path)
-    subdirs = []
-    files = []
-    files_metadata = {}
+    subdirs, files, files_metadata = [], [], {}
     for di in dirlisting:
         d = os.path.join(path, di)
         if os.path.isdir(d):
@@ -41,17 +92,7 @@ def local_file_metadata(pathlist):
         elif os.path.isfile(d):
             files.append(di)
             files_metadata[di] = {"mtime": int(os.path.getmtime(d))}
-        else:
-            # you've probably hit an unfulfilled path link or something.
-            pass
-
-    metadata = {
-        "subdirs": subdirs,
-        "files": files,
-        "pathlist": pathlist,
-        "files_metadata": files_metadata
-        }
-    return metadata
+    return {"subdirs": subdirs, "files": files, "pathlist": pathlist, "files_metadata": files_metadata}
 
 @expose
 def get_file_metadata(source="ncnr", pathlist=None):
@@ -65,9 +106,15 @@ def get_file_metadata(source="ncnr", pathlist=None):
     else:
         import requests
         url = fetch.FILE_HELPERS[source] #'https://ncnr.nist.gov/ipeek/listftpfiles_json.php'
-        req = requests.post(url, json={"pathlist": pathlist})
+        req = requests.post(url, json={"pathlist": pathlist}, timeout=(10, 30))
+        req.raise_for_status()
         metadata = req.json()
 
+    try:
+        from reductus.userdata import save_recent_path
+        save_recent_path(source, pathlist)
+    except Exception:
+        pass
     return metadata
 
 @expose
@@ -195,6 +242,52 @@ def list_datasources():
 @expose
 def list_instruments():
     return _list_instruments()
+
+@expose
+def check_sources():
+    """Concurrently probe all configured data sources. Returns list of {name, available} dicts."""
+    import requests
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    PROBE_TIMEOUT = 5
+
+    def probe(source_def):
+        name = source_def.get("name", "")
+        url = source_def.get("url", "")
+        if url.startswith("file:///"):
+            return {"name": name, "available": True}
+        probe_url = (source_def.get("file_helper_url")
+                     or (url if url.startswith(("http://", "https://")) else None)
+                     or ("https://dx.doi.org/" + source_def["DOI"] if source_def.get("DOI") else None))
+        if not probe_url:
+            return {"name": name, "available": False}
+        try:
+            r = requests.head(probe_url, timeout=PROBE_TIMEOUT, allow_redirects=True)
+            return {"name": name, "available": r.status_code < 500}
+        except Exception:
+            return {"name": name, "available": False}
+
+    results = []
+    with ThreadPoolExecutor(max_workers=max(len(fetch.DATA_SOURCES), 1)) as pool:
+        futures = {pool.submit(probe, s): s for s in fetch.DATA_SOURCES}
+        for future in as_completed(futures):
+            try:
+                results.append(future.result())
+            except Exception:
+                results.append({"name": futures[future].get("name", ""), "available": False})
+
+    order = {s["name"]: i for i, s in enumerate(fetch.DATA_SOURCES)}
+    results.sort(key=lambda r: order.get(r["name"], 999))
+    return results
+
+@expose
+def get_recent_paths():
+    """Return dict of {source_name: pathlist} for last-browsed directories."""
+    try:
+        from reductus.userdata import load_recent_paths
+        return load_recent_paths()
+    except Exception:
+        return {}
 
 def initialize(config=None):
     if config is None:

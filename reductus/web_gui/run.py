@@ -57,6 +57,17 @@ def main():
     desktop_parser.add_argument('--cache-engine', type=str, default='memory', choices=['memory', 'diskcache', 'redis'], help='select cache engine (default is "memory", overrides config)')
     desktop_parser.add_argument('--data-dir', dest='data_dirs', action='append', metavar='PATH',
                                 help='register a local directory as a named data source (repeatable)')
+    desktop_parser.add_argument('--register-associations', action='store_true', help='register file associations for .json templates')
+    desktop_parser.add_argument('--unregister-associations', action='store_true', help='unregister file associations')
+
+    # File associations subcommand
+    assoc_parser = subparsers.add_parser(
+        'file-assoc',
+        help='manage file associations for .json templates'
+    )
+    assoc_subparsers = assoc_parser.add_subparsers(dest='assoc_action', help='action to perform')
+    assoc_subparsers.add_parser('register', help='register file associations')
+    assoc_subparsers.add_parser('unregister', help='unregister file associations')
 
     # Parse arguments
     # If no arguments and no subcommand, default to 'gui' for backward compatibility
@@ -75,6 +86,8 @@ def main():
         _run_batch(args)
     elif args.subcommand == 'desktop':
         _run_desktop(args)
+    elif args.subcommand == 'file-assoc':
+        _manage_file_associations(args)
     else:
         parser.print_help()
 
@@ -150,7 +163,47 @@ def _run_batch(args):
 def _run_desktop(args):
     """Run in native desktop window."""
     from reductus.desktop import run_desktop_cli
+    from reductus.file_associations import register_file_associations, unregister_file_associations
+
+    # Handle file associations if requested
+    if getattr(args, 'register_associations', False):
+        print("Registering file associations...")
+        if register_file_associations():
+            print("File associations registered successfully.")
+        else:
+            print("Failed to register file associations.")
+        return
+
+    if getattr(args, 'unregister_associations', False):
+        print("Unregistering file associations...")
+        if unregister_file_associations():
+            print("File associations unregistered successfully.")
+        else:
+            print("Failed to unregister file associations.")
+        return
+
+    # Run desktop app
     run_desktop_cli(args)
+
+
+def _manage_file_associations(args):
+    """Manage file associations."""
+    from reductus.file_associations import register_file_associations, unregister_file_associations
+
+    if args.assoc_action == 'register':
+        print("Registering file associations...")
+        if register_file_associations():
+            print("File associations registered successfully.")
+        else:
+            print("Failed to register file associations.")
+    elif args.assoc_action == 'unregister':
+        print("Unregistering file associations...")
+        if unregister_file_associations():
+            print("File associations unregistered successfully.")
+        else:
+            print("Failed to unregister file associations.")
+    else:
+        print("No action specified. Use 'register' or 'unregister'.")
 
 def _open_browser_when_server_ready(port, retry_interval=0.2, max_retries=50):
     # Wait for the server to start

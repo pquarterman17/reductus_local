@@ -111,6 +111,10 @@ def create_app(config=None):
     from reductus.rev import print_revision
     print_revision()
 
+    # Register template management API
+    from reductus.web_gui.template_api import register_template_api
+    register_template_api(app)
+
     return app
 
 if __name__ == '__main__':

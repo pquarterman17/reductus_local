@@ -40,6 +40,7 @@ def test_cli_has_desktop_subcommand():
     import argparse
     import io
     from contextlib import redirect_stdout
+    import sys
 
     # Create parser and check for desktop subcommand
     parser = argparse.ArgumentParser(description='Reductus: data reduction for neutron scattering')
@@ -50,9 +51,9 @@ def test_cli_has_desktop_subcommand():
     subparsers.add_parser('batch')
     subparsers.add_parser('desktop')
 
-    # Check that we can parse desktop subcommand
-    args = parser.parse_args(['desktop', '--help'])
-    assert args.subcommand == 'desktop' or args is not None  # --help will exit, but parser works
+    # Check that we can parse desktop subcommand (without --help which would exit)
+    args = parser.parse_args(['desktop'])
+    assert args.subcommand == 'desktop'
 
 
 def test_pywebview_import_warning():

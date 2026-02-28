@@ -23,7 +23,9 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 
-logger = logging.getLogger(__name__)
+from reductus.logging_config import get_template_logger
+
+logger = get_template_logger()
 
 
 class TemplateManager:
@@ -53,15 +55,27 @@ class TemplateManager:
         Returns:
             Dict with keys "built-in" and "custom", each mapping to list of template metadata dicts
         """
+        logger.info(f"Listing templates", extra={"category": category})
         result = {}
 
-        if category in ("all", "built-in"):
-            result["built-in"] = self._list_built_in_templates()
+        try:
+            if category in ("all", "built-in"):
+                built_in = self._list_built_in_templates()
+                result["built-in"] = built_in
+                logger.debug(f"Found {len(built_in)} built-in templates")
 
-        if category in ("all", "custom"):
-            result["custom"] = self._list_custom_templates()
+            if category in ("all", "custom"):
+                custom = self._list_custom_templates()
+                result["custom"] = custom
+                logger.debug(f"Found {len(custom)} custom templates")
 
-        return result
+            total = sum(len(v) for v in result.values())
+            logger.info(f"Listed {total} templates", extra={"category": category})
+            return result
+
+        except Exception as e:
+            logger.error(f"Failed to list templates: {e}", exc_info=True)
+            raise
 
     def _list_built_in_templates(self) -> List[Dict]:
         """List built-in templates."""
@@ -181,29 +195,46 @@ class TemplateManager:
         Returns:
             True if successful
         """
-        if not self._user_template_dir.exists():
-            self._user_template_dir.mkdir(parents=True, exist_ok=True)
-
-        # Determine filename
-        if name is None:
-            name = template_def.get("name", "template").replace(" ", "_")
-
-        # Add .json extension if needed
-        if not name.endswith(".json"):
-            name = f"{name}.json"
-
-        # Ensure filename is safe
-        name = os.path.basename(name)  # Remove any path components
-
-        template_path = self._user_template_dir / name
+        template_name = template_def.get("name", "Unknown")
+        logger.info(f"Saving template", extra={
+            "template_name": template_name,
+            "custom_name": name
+        })
 
         try:
+            # Ensure _user_template_dir is a Path object
+            template_dir = Path(self._user_template_dir) if not isinstance(self._user_template_dir, Path) else self._user_template_dir
+
+            if not template_dir.exists():
+                logger.debug(f"Creating template directory: {template_dir}")
+                template_dir.mkdir(parents=True, exist_ok=True)
+
+            # Determine filename
+            if name is None:
+                name = template_name.replace(" ", "_")
+                logger.debug(f"Using template name as filename: {name}")
+
+            # Add .json extension if needed
+            if not name.endswith(".json"):
+                name = f"{name}.json"
+
+            # Ensure filename is safe
+            name = os.path.basename(name)  # Remove any path components
+            logger.debug(f"Safe filename: {name}")
+
+            template_path = template_dir / name
+
             with open(template_path, "w") as f:
                 json.dump(template_def, f, indent=2)
-            logger.info(f"Template saved to {template_path}")
+
+            logger.info(f"Template saved successfully", extra={
+                "path": str(template_path),
+                "size_bytes": template_path.stat().st_size
+            })
             return True
+
         except Exception as e:
-            logger.error(f"Failed to save template: {e}")
+            logger.error(f"Failed to save template: {e}", exc_info=True)
             return False
 
     def delete_template(self, name: str) -> bool:
@@ -216,18 +247,22 @@ class TemplateManager:
         Returns:
             True if successful
         """
-        template_path = self._find_template_file(name, source="custom")
-
-        if not template_path:
-            logger.warning(f"Template not found: {name}")
-            return False
+        logger.info(f"Deleting template", extra={"name": name})
 
         try:
+            template_path = self._find_template_file(name, source="custom")
+
+            if not template_path:
+                logger.warning(f"Template not found: {name}")
+                return False
+
+            logger.debug(f"Found template at: {template_path}")
             template_path.unlink()
-            logger.info(f"Template deleted: {template_path}")
+            logger.info(f"Template deleted successfully", extra={"path": str(template_path)})
             return True
+
         except Exception as e:
-            logger.error(f"Failed to delete template: {e}")
+            logger.error(f"Failed to delete template: {e}", exc_info=True)
             return False
 
     def clone_template(self, source_name: str, target_name: str) -> bool:
@@ -241,16 +276,34 @@ class TemplateManager:
         Returns:
             True if successful
         """
-        template_def = self.load_template(source_name, source="built-in")
+        logger.info(f"Cloning template", extra={
+            "source": source_name,
+            "target": target_name
+        })
 
-        if not template_def:
-            logger.warning(f"Source template not found: {source_name}")
+        try:
+            logger.debug(f"Loading source template: {source_name}")
+            template_def = self.load_template(source_name, source="built-in")
+
+            if not template_def:
+                logger.warning(f"Source template not found: {source_name}")
+                return False
+
+            logger.debug(f"Loaded template, updating name to: {target_name}")
+            # Update name in cloned template
+            template_def["name"] = target_name
+
+            success = self.save_template(template_def, name=target_name)
+            if success:
+                logger.info(f"Template cloned successfully", extra={
+                    "source": source_name,
+                    "target": target_name
+                })
+            return success
+
+        except Exception as e:
+            logger.error(f"Failed to clone template: {e}", exc_info=True)
             return False
-
-        # Update name in cloned template
-        template_def["name"] = target_name
-
-        return self.save_template(template_def, name=target_name)
 
 
 # Global instance

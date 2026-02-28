@@ -21,7 +21,12 @@ import json
 import os
 import sys
 import glob as glob_module
+import logging
 from pathlib import Path
+
+from reductus.logging_config import get_reduce_logger
+
+logger = get_reduce_logger()
 
 # Lazy initialization
 _initialized = False
@@ -34,16 +39,28 @@ def _ensure_initialized(instruments=None):
     """
     global _initialized
     if _initialized:
+        logger.debug("Already initialized, skipping")
         return
 
-    from reductus.dataflow.configure import load_config, apply_config
+    logger.info("Initializing Reductus reduction API")
+    try:
+        from reductus.dataflow.configure import load_config, apply_config
 
-    config = load_config(name="config", fallback=True)
-    if instruments:
-        config["instruments"] = instruments
-    apply_config(user_config=config)
+        config = load_config(name="config", fallback=True)
+        loaded_instruments = config.get("instruments", [])
+        logger.debug(f"Loaded configuration with instruments: {loaded_instruments}")
 
-    _initialized = True
+        if instruments:
+            logger.info(f"Overriding instruments: {instruments}")
+            config["instruments"] = instruments
+
+        apply_config(user_config=config)
+        _initialized = True
+        logger.info("Reductus API initialized successfully")
+
+    except Exception as e:
+        logger.error(f"Failed to initialize Reductus: {e}", exc_info=True)
+        raise
 
 
 def _path_to_fileinfo(path):
@@ -53,6 +70,8 @@ def _path_to_fileinfo(path):
     Returns a list of {"source": "local", "path": str, "mtime": int} dicts,
     one per file that matches the pattern.
     """
+    logger.debug(f"Converting path to fileinfo: {path}")
+
     # Normalize path and handle globs
     expanded_path = os.path.expanduser(path)
 
@@ -63,9 +82,13 @@ def _path_to_fileinfo(path):
         # No glob matches; treat as literal path
         if os.path.exists(expanded_path):
             matches = [expanded_path]
+            logger.debug(f"Path exists as literal: {expanded_path}")
         else:
             # Path doesn't exist, but return it anyway (will fail at load time)
             matches = [expanded_path]
+            logger.warning(f"Path not found: {expanded_path}")
+    else:
+        logger.debug(f"Glob pattern matched {len(matches)} files")
 
     fileinfos = []
     for filepath in matches:
@@ -74,6 +97,7 @@ def _path_to_fileinfo(path):
             mtime = int(os.path.getmtime(abs_path))
         except (OSError, FileNotFoundError):
             mtime = 0
+            logger.warning(f"Could not stat file: {abs_path}")
 
         fileinfos.append({
             "source": "local",
@@ -81,6 +105,7 @@ def _path_to_fileinfo(path):
             "mtime": mtime,
         })
 
+    logger.info(f"Converted {len(fileinfos)} files from pattern: {path}")
     return fileinfos
 
 
@@ -178,61 +203,89 @@ class Template:
         Returns:
             ReductionResult instance
         """
+        logger.info(f"Running template reduction", extra={
+            "template_name": self.template_def.get("name", "Unknown"),
+            "has_files": files is not None,
+            "has_data_dir": data_dir is not None,
+            "node": node,
+            "terminal": terminal
+        })
+
         _ensure_initialized()
 
         from reductus.dataflow.core import Template as CoreTemplate
         from reductus.dataflow.calc import process_template
 
-        # Build list of fileinfo dicts
-        fileinfos = []
-
-        if files is None and data_dir is None:
-            # No files specified; loaders will use template defaults if present
+        try:
+            # Build list of fileinfo dicts
             fileinfos = []
-        elif files is not None:
-            # Process explicit file list
-            for f in files:
-                fileinfos.extend(_path_to_fileinfo(f))
-        else:
-            # data_dir specified; glob for files
-            pattern = glob_pattern or "**/*"
-            search_path = os.path.join(data_dir, pattern)
-            fileinfos.extend(_path_to_fileinfo(search_path))
 
-        # Inject file lists into loader nodes
-        config = {}
-        loaders = _find_loader_nodes(self.template_def)
-
-        if loaders and fileinfos:
-            # All loaders get the same file list
-            for node_idx in loaders:
-                config.setdefault(str(node_idx), {})["filelist"] = fileinfos
-
-        # Apply field overrides
-        for key, value in field_overrides.items():
-            # key is like "0" for node index or "0:field" for specific field
-            if ":" in key:
-                parts = key.split(":", 1)
-                node_idx, field_name = parts
-                config.setdefault(node_idx, {})[field_name] = value
+            if files is None and data_dir is None:
+                # No files specified; loaders will use template defaults if present
+                logger.debug("No files specified")
+                fileinfos = []
+            elif files is not None:
+                # Process explicit file list
+                logger.debug(f"Processing {len(files)} file patterns")
+                for f in files:
+                    fileinfos.extend(_path_to_fileinfo(f))
             else:
-                config.setdefault(key, {}).update(value if isinstance(value, dict) else {})
+                # data_dir specified; glob for files
+                pattern = glob_pattern or "**/*"
+                search_path = os.path.join(data_dir, pattern)
+                logger.info(f"Globbing directory: {data_dir}")
+                fileinfos.extend(_path_to_fileinfo(search_path))
 
-        # Determine target node (default to last)
-        num_modules = len(self.template_def.get("modules", []))
-        if node is None:
-            node = num_modules - 1
-        elif node < 0:
-            # Handle negative indices like Python lists
-            node = num_modules + node
+            logger.info(f"Loaded {len(fileinfos)} files for reduction")
 
-        # Create a CoreTemplate from the definition
-        core_template = CoreTemplate(**self.template_def)
+            # Inject file lists into loader nodes
+            config = {}
+            loaders = _find_loader_nodes(self.template_def)
+            logger.debug(f"Found {len(loaders)} loader nodes")
 
-        # Run the template
-        bundle = process_template(core_template, config, target=(node, terminal))
+            if loaders and fileinfos:
+                # All loaders get the same file list
+                for node_idx in loaders:
+                    config.setdefault(str(node_idx), {})["filelist"] = fileinfos
 
-        return ReductionResult(bundle, node, terminal)
+            # Apply field overrides
+            if field_overrides:
+                logger.debug(f"Applying field overrides: {list(field_overrides.keys())}")
+                for key, value in field_overrides.items():
+                    # key is like "0" for node index or "0:field" for specific field
+                    if ":" in key:
+                        parts = key.split(":", 1)
+                        node_idx, field_name = parts
+                        config.setdefault(node_idx, {})[field_name] = value
+                    else:
+                        config.setdefault(key, {}).update(value if isinstance(value, dict) else {})
+
+            # Determine target node (default to last)
+            num_modules = len(self.template_def.get("modules", []))
+            if node is None:
+                node = num_modules - 1
+            elif node < 0:
+                # Handle negative indices like Python lists
+                node = num_modules + node
+
+            logger.info(f"Executing through node {node} terminal '{terminal}'")
+
+            # Create a CoreTemplate from the definition
+            core_template = CoreTemplate(**self.template_def)
+
+            # Run the template
+            logger.debug("Starting template execution")
+            bundle = process_template(core_template, config, target=(node, terminal))
+            logger.info(f"Template execution complete", extra={
+                "datatype": bundle.datatype.id if bundle.datatype else None,
+                "output_size": len(str(bundle.values)) if hasattr(bundle, 'values') else 0
+            })
+
+            return ReductionResult(bundle, node, terminal)
+
+        except Exception as e:
+            logger.error(f"Template execution failed: {e}", exc_info=True)
+            raise
 
 
 class ReductionResult:
@@ -285,31 +338,50 @@ class ReductionResult:
             output_dir: Directory to write output files to (created if needed).
             fmt: Export format (default: "column", supported by most datatypes).
         """
-        os.makedirs(output_dir, exist_ok=True)
+        logger.info(f"Saving reduction results", extra={
+            "output_dir": output_dir,
+            "format": fmt
+        })
 
-        # Get export data from bundle
-        export_data = self.bundle.get_export(export_type=fmt)
-        values = export_data.get("values", [])
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            logger.debug(f"Created output directory: {output_dir}")
 
-        # Write each value to a file
-        for i, data in enumerate(values):
-            # Construct filename from data attributes if available
-            if hasattr(data, "name"):
-                base_name = data.name
-            else:
-                base_name = f"output_{i}"
+            # Get export data from bundle
+            logger.debug(f"Exporting data as format: {fmt}")
+            export_data = self.bundle.get_export(export_type=fmt)
+            values = export_data.get("values", [])
+            logger.info(f"Exporting {len(values)} values")
 
-            filename = f"{base_name}.dat"
-            filepath = os.path.join(output_dir, filename)
+            # Write each value to a file
+            written_files = []
+            for i, data in enumerate(values):
+                # Construct filename from data attributes if available
+                if hasattr(data, "name"):
+                    base_name = data.name
+                else:
+                    base_name = f"output_{i}"
 
-            # Write data
-            if isinstance(data, str):
-                with open(filepath, "w") as f:
-                    f.write(data)
-            else:
-                # Try to serialize as text
-                with open(filepath, "w") as f:
-                    f.write(str(data))
+                filename = f"{base_name}.dat"
+                filepath = os.path.join(output_dir, filename)
+
+                # Write data
+                if isinstance(data, str):
+                    with open(filepath, "w") as f:
+                        f.write(data)
+                else:
+                    # Try to serialize as text
+                    with open(filepath, "w") as f:
+                        f.write(str(data))
+
+                written_files.append(filename)
+                logger.debug(f"Wrote output file: {filename}")
+
+            logger.info(f"Successfully saved {len(written_files)} files to {output_dir}")
+
+        except Exception as e:
+            logger.error(f"Failed to save results: {e}", exc_info=True)
+            raise
 
 
 # Module-level convenience functions
@@ -324,7 +396,17 @@ def load_template(path):
     Returns:
         Template instance
     """
-    return Template.load(path)
+    logger.info(f"Loading template from: {path}")
+    try:
+        template = Template.load(path)
+        logger.info(f"Successfully loaded template: {template.template_def.get('name', 'Unknown')}")
+        return template
+    except FileNotFoundError as e:
+        logger.error(f"Template file not found: {path}")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to load template: {e}", exc_info=True)
+        raise
 
 
 def run(template_or_path, files=None, data_dir=None, glob_pattern=None,
@@ -347,24 +429,40 @@ def run(template_or_path, files=None, data_dir=None, glob_pattern=None,
     Returns:
         ReductionResult instance
     """
-    # Initialize with specified instruments if provided
-    if instruments:
-        _ensure_initialized(instruments=instruments)
-    else:
-        _ensure_initialized()
+    logger.info("Running reduction via convenience function", extra={
+        "template_type": type(template_or_path).__name__,
+        "has_files": files is not None,
+        "has_data_dir": data_dir is not None,
+        "instruments": instruments
+    })
 
-    # Load template if needed
-    if isinstance(template_or_path, str):
-        template = Template.load(template_or_path)
-    else:
-        template = template_or_path
+    try:
+        # Initialize with specified instruments if provided
+        if instruments:
+            logger.info(f"Initializing with instruments: {instruments}")
+            _ensure_initialized(instruments=instruments)
+        else:
+            _ensure_initialized()
 
-    # Run template
-    return template.run(
-        files=files,
-        data_dir=data_dir,
-        glob_pattern=glob_pattern,
-        node=node,
-        terminal=terminal,
-        **field_overrides
-    )
+        # Load template if needed
+        if isinstance(template_or_path, str):
+            logger.debug(f"Loading template from path: {template_or_path}")
+            template = Template.load(template_or_path)
+        else:
+            logger.debug("Using provided Template instance")
+            template = template_or_path
+
+        # Run template
+        logger.debug("Executing template with convenience function")
+        return template.run(
+            files=files,
+            data_dir=data_dir,
+            glob_pattern=glob_pattern,
+            node=node,
+            terminal=terminal,
+            **field_overrides
+        )
+
+    except Exception as e:
+        logger.error(f"Convenience function failed: {e}", exc_info=True)
+        raise

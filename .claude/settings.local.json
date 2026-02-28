@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(pip install:*)",
+      "Bash(/c/Users/patri/anaconda3/python.exe:*)",
+      "Bash(source:*)",
+      "Bash(pkill:*)",
+      "Bash(netstat:*)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(taskkill:*)",
+      "Bash(xargs -I {} taskkill /PID {} /F)",
+      "Bash(python:*)",
+      "Bash(reductus:*)",
+      "Bash(xargs grep:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

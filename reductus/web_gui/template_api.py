@@ -10,8 +10,12 @@ Provides REST endpoints for:
 """
 
 import json
+import logging
 from flask import request, jsonify
 from reductus.template_manager import get_template_manager
+from reductus.logging_config import get_template_logger
+
+logger = get_template_logger()
 
 
 def register_template_api(app):
@@ -27,10 +31,14 @@ def register_template_api(app):
     def api_list_templates():
         """List available templates."""
         category = request.args.get('category', 'all')
+        logger.info(f"API request: list templates", extra={"category": category})
         try:
             templates = manager.list_templates(category=category)
+            total = sum(len(v) for v in templates.values())
+            logger.debug(f"Returning {total} templates")
             return jsonify(templates)
         except Exception as e:
+            logger.error(f"API error in list_templates: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.route('/api/templates/load', methods=['GET', 'POST'])

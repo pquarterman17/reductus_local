@@ -7,8 +7,12 @@ Provides REST endpoints for:
 - Browse suggestions based on recent activity
 """
 
+import logging
 from flask import request, jsonify
 from reductus.favorites import get_favorites_manager, get_export_history_manager
+from reductus.logging_config import get_browser_logger
+
+logger = get_browser_logger()
 
 
 def register_browser_api(app):
@@ -26,10 +30,13 @@ def register_browser_api(app):
     @app.route('/api/browser/favorites/list', methods=['GET'])
     def api_list_favorites():
         """List pinned directories."""
+        logger.info("API request: list favorites")
         try:
             favorites_list = favorites.list_favorites()
+            logger.debug(f"Returning {len(favorites_list)} favorites")
             return jsonify({"favorites": favorites_list})
         except Exception as e:
+            logger.error(f"API error in list_favorites: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.route('/api/browser/favorites/add', methods=['POST'])
@@ -39,20 +46,27 @@ def register_browser_api(app):
         path = data.get('path')
         name = data.get('name')
 
+        logger.info(f"API request: add favorite", extra={"path": path, "name": name})
+
         if not path:
+            logger.warning("API request missing path parameter")
             return jsonify({"error": "Path required"}), 400
 
         try:
             success = favorites.add_favorite(path, name=name)
             if success:
+                favorites_list = favorites.list_favorites()
+                logger.debug(f"Favorite added, returning {len(favorites_list)} total favorites")
                 return jsonify({
                     "success": True,
                     "message": "Favorite added",
-                    "favorites": favorites.list_favorites()
+                    "favorites": favorites_list
                 })
             else:
+                logger.warning(f"Failed to add favorite: {path}")
                 return jsonify({"error": "Failed to add favorite"}), 500
         except Exception as e:
+            logger.error(f"API error in add_favorite: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.route('/api/browser/favorites/remove', methods=['POST'])

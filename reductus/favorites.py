@@ -11,8 +11,11 @@ import os
 import logging
 from pathlib import Path
 from typing import List, Dict, Optional
+import time
 
-logger = logging.getLogger(__name__)
+from reductus.logging_config import get_browser_logger
+
+logger = get_browser_logger()
 
 
 class FavoritesManager:
@@ -33,11 +36,16 @@ class FavoritesManager:
     def _load_favorites(self) -> Dict[str, List[Dict]]:
         """Load favorites from file."""
         if not self._favorites_file.exists():
+            logger.debug(f"No favorites file found at: {self._favorites_file}")
             return {"directories": []}
 
         try:
+            logger.debug(f"Loading favorites from: {self._favorites_file}")
             with open(self._favorites_file, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+            count = len(data.get("directories", []))
+            logger.debug(f"Loaded {count} favorite directories")
+            return data
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"Failed to load favorites: {e}")
             return {"directories": []}
@@ -60,8 +68,11 @@ class FavoritesManager:
         Returns:
             List of favorites: [{"path": str, "name": str, "icon": str}, ...]
         """
+        logger.debug("Listing favorite directories")
         data = self._load_favorites()
-        return data.get("directories", [])
+        favorites = data.get("directories", [])
+        logger.debug(f"Found {len(favorites)} favorite directories")
+        return favorites
 
     def add_favorite(self, path: str, name: Optional[str] = None) -> bool:
         """
@@ -74,34 +85,50 @@ class FavoritesManager:
         Returns:
             True if successful
         """
-        # Normalize path
-        path = os.path.abspath(path).replace("\\", "/")
+        logger.info(f"Adding favorite directory", extra={"path": path, "name": name})
 
-        if not os.path.isdir(path):
-            logger.warning(f"Not a directory: {path}")
+        try:
+            # Normalize path
+            path = os.path.abspath(path).replace("\\", "/")
+            logger.debug(f"Normalized path: {path}")
+
+            if not os.path.isdir(path):
+                logger.warning(f"Path is not a directory: {path}")
+                return False
+
+            # Generate name if not provided
+            if not name:
+                name = os.path.basename(path.rstrip("/\\")) or path
+                logger.debug(f"Generated name from path: {name}")
+
+            # Check if already exists
+            data = self._load_favorites()
+            for fav in data.get("directories", []):
+                if fav["path"] == path:
+                    logger.info(f"Favorite already exists: {name} ({path})")
+                    return True  # Already pinned, consider it success
+
+            # Add new favorite
+            favorite = {
+                "path": path,
+                "name": name,
+                "icon": "folder",  # Default icon
+                "timestamp": int(time.time())
+            }
+            data.setdefault("directories", []).append(favorite)
+
+            success = self._save_favorites(data)
+            if success:
+                logger.info(f"Favorite added successfully", extra={
+                    "name": name,
+                    "path": path,
+                    "total_favorites": len(data.get("directories", []))
+                })
+            return success
+
+        except Exception as e:
+            logger.error(f"Failed to add favorite: {e}", exc_info=True)
             return False
-
-        # Generate name if not provided
-        if not name:
-            name = os.path.basename(path.rstrip("/\\")) or path
-
-        # Check if already exists
-        data = self._load_favorites()
-        for fav in data.get("directories", []):
-            if fav["path"] == path:
-                logger.info(f"Favorite already exists: {path}")
-                return True  # Already pinned, consider it success
-
-        # Add new favorite
-        favorite = {
-            "path": path,
-            "name": name,
-            "icon": "folder"  # Default icon
-        }
-        data.setdefault("directories", []).append(favorite)
-
-        logger.info(f"Added favorite: {name} -> {path}")
-        return self._save_favorites(data)
 
     def remove_favorite(self, path: str) -> bool:
         """
@@ -173,11 +200,16 @@ class ExportHistoryManager:
     def _load_history(self) -> Dict[str, List[Dict]]:
         """Load export history from file."""
         if not self._history_file.exists():
+            logger.debug(f"No export history file found at: {self._history_file}")
             return {"locations": [], "default_location": None}
 
         try:
+            logger.debug(f"Loading export history from: {self._history_file}")
             with open(self._history_file, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+            count = len(data.get("locations", []))
+            logger.debug(f"Loaded {count} export locations")
+            return data
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"Failed to load export history: {e}")
             return {"locations": [], "default_location": None}
@@ -203,9 +235,12 @@ class ExportHistoryManager:
         Returns:
             List of locations: [{"path": str, "timestamp": float}, ...]
         """
+        logger.debug(f"Getting recent exports", extra={"limit": limit})
         data = self._load_history()
         locations = data.get("locations", [])
-        return sorted(locations, key=lambda x: x.get("timestamp", 0), reverse=True)[:limit]
+        recent = sorted(locations, key=lambda x: x.get("timestamp", 0), reverse=True)[:limit]
+        logger.debug(f"Returning {len(recent)} recent export locations")
+        return recent
 
     def add_export_location(self, path: str) -> bool:
         """
@@ -217,31 +252,45 @@ class ExportHistoryManager:
         Returns:
             True if successful
         """
-        import time
+        logger.info(f"Recording export location", extra={"path": path})
 
-        path = os.path.abspath(path).replace("\\", "/")
+        try:
+            path = os.path.abspath(path).replace("\\", "/")
+            logger.debug(f"Normalized export path: {path}")
 
-        if not os.path.isdir(path):
-            logger.warning(f"Not a directory: {path}")
+            if not os.path.isdir(path):
+                logger.warning(f"Export path is not a directory: {path}")
+                return False
+
+            data = self._load_history()
+            locations = data.get("locations", [])
+
+            # Remove if already exists (to move it to top)
+            original_count = len(locations)
+            locations = [loc for loc in locations if loc["path"] != path]
+            if len(locations) < original_count:
+                logger.debug(f"Moving existing location to top: {path}")
+
+            # Add at beginning with timestamp
+            locations.insert(0, {
+                "path": path,
+                "timestamp": time.time()
+            })
+
+            # Keep only last 50 locations
+            data["locations"] = locations[:50]
+
+            success = self._save_history(data)
+            if success:
+                logger.info(f"Export location recorded successfully", extra={
+                    "path": path,
+                    "total_locations": len(data.get("locations", []))
+                })
+            return success
+
+        except Exception as e:
+            logger.error(f"Failed to record export location: {e}", exc_info=True)
             return False
-
-        data = self._load_history()
-        locations = data.get("locations", [])
-
-        # Remove if already exists (to move it to top)
-        locations = [loc for loc in locations if loc["path"] != path]
-
-        # Add at beginning with timestamp
-        locations.insert(0, {
-            "path": path,
-            "timestamp": time.time()
-        })
-
-        # Keep only last 50 locations
-        data["locations"] = locations[:50]
-
-        logger.info(f"Recorded export location: {path}")
-        return self._save_history(data)
 
     def get_default_export_location(self) -> Optional[str]:
         """

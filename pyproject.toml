@@ -35,9 +35,10 @@ dependencies = [
 
 [project.optional-dependencies]
 server = ["msgpack", "flask", "flask-cors", "requests", "platformdirs"]
+desktop = ["pywebview"]
 masked_curve_fit = ["numdifftools"]
 nexus_files = ["h5py"]
-all = ["msgpack", "flask", "flask-cors", "requests", "numdifftools", "h5py", "platformdirs"]
+all = ["msgpack", "flask", "flask-cors", "requests", "numdifftools", "h5py", "platformdirs", "pywebview"]
 
 [project.scripts]
 reductus = "reductus.web_gui.run:main"

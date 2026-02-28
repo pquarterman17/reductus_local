@@ -45,6 +45,19 @@ def main():
     batch_parser.add_argument('--node', type=int, help='node index to extract results from (default: last node)')
     batch_parser.add_argument('--terminal', default='output', help='output terminal name (default: "output")')
 
+    # Desktop subcommand
+    desktop_parser = subparsers.add_parser(
+        'desktop',
+        help='run in native desktop window (requires pywebview)'
+    )
+    desktop_parser.add_argument('-d', '--debug', action='store_true', help='enable debug mode')
+    desktop_parser.add_argument('-p', '--port', default=8002, type=int, help='port on which to start the server')
+    desktop_parser.add_argument('-c', '--config-file', type=str, help='path to JSON configuration to load')
+    desktop_parser.add_argument('-i', '--instruments', nargs='+', help='instruments to load (overrides config)')
+    desktop_parser.add_argument('--cache-engine', type=str, default='memory', choices=['memory', 'diskcache', 'redis'], help='select cache engine (default is "memory", overrides config)')
+    desktop_parser.add_argument('--data-dir', dest='data_dirs', action='append', metavar='PATH',
+                                help='register a local directory as a named data source (repeatable)')
+
     # Parse arguments
     # If no arguments and no subcommand, default to 'gui' for backward compatibility
     if len(sys.argv) == 1:
@@ -60,6 +73,8 @@ def main():
         _run_gui(args)
     elif args.subcommand == 'batch':
         _run_batch(args)
+    elif args.subcommand == 'desktop':
+        _run_desktop(args)
     else:
         parser.print_help()
 
@@ -130,6 +145,12 @@ def _run_batch(args):
     print(f"Saving results to {args.output}...")
     result.save(args.output, fmt=args.format)
     print("Done!")
+
+
+def _run_desktop(args):
+    """Run in native desktop window."""
+    from reductus.desktop import run_desktop_cli
+    run_desktop_cli(args)
 
 def _open_browser_when_server_ready(port, retry_interval=0.2, max_retries=50):
     # Wait for the server to start

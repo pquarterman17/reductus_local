@@ -41,19 +41,27 @@ pip install --no-index --find-links vendor/ ".[all]"
 
 This installs reductus and every dependency entirely from local wheel files.
 
+For **development** (editable mode — code changes take effect immediately):
+
+```bash
+pip install --no-index --find-links vendor/ -e ".[all]"
+```
+
 ### 4. Verify
 
 ```bash
 python -c "import reductus; print('OK')"
 ```
 
-### 5. Run the server
+### 5. Run
 
 ```bash
+# Web server (opens in browser at http://localhost:8002)
 reductus
-```
 
-Then open http://localhost:8002 in a browser.
+# Desktop native window (no browser needed)
+reductus desktop
+```
 
 ## Install Subsets
 

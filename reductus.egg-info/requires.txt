@@ -12,6 +12,10 @@ requests
 numdifftools
 h5py
 platformdirs
+pywebview
+
+[desktop]
+pywebview
 
 [masked_curve_fit]
 numdifftools

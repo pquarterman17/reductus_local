@@ -13,7 +13,11 @@
       "Bash(python:*)",
       "Bash(reductus:*)",
       "Bash(xargs grep:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(pip:*)",
+      "Bash(test_venv/Scripts/python:*)",
+      "Bash(where gh:*)",
+      "Bash(pip wheel:*)"
     ]
   }
 }

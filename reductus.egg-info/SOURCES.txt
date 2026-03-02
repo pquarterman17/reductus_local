@@ -3,8 +3,13 @@ MANIFEST.in
 README.rst
 pyproject.toml
 reductus/__init__.py
+reductus/desktop.py
+reductus/favorites.py
+reductus/file_associations.py
+reductus/logging_config.py
 reductus/reduce.py
 reductus/rev.py
+reductus/template_manager.py
 reductus/userdata.py
 reductus.egg-info/PKG-INFO
 reductus.egg-info/SOURCES.txt
@@ -143,9 +148,11 @@ reductus/vsansred/templates/ncnr.vsans.he3_transmission.json
 reductus/vsansred/templates/ncnr.vsans.load.json
 reductus/web_gui/__init__.py
 reductus/web_gui/api.py
+reductus/web_gui/browser_api.py
 reductus/web_gui/build_client.py
 reductus/web_gui/run.py
 reductus/web_gui/server_flask.py
+reductus/web_gui/template_api.py
 reductus/web_gui/wsgi_app.py
 reductus/web_gui/webreduce/categories_editor.html
 reductus/web_gui/webreduce/copy_recursive_sync.mjs
@@ -242,5 +249,10 @@ reductus/xrrred/dataflow.py
 reductus/xrrred/steps.py
 reductus/xrrred/templates/__init__.py
 reductus/xrrred/templates/xrr.default.json
+tests/test_browser_ux.py
+tests/test_desktop.py
+tests/test_desktop_native.py
+tests/test_reduce.py
 tests/test_regression.py
+tests/test_template_manager.py
 tests/test_wpolyfit.py

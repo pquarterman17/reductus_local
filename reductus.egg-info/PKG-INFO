@@ -28,6 +28,8 @@ Requires-Dist: flask; extra == "server"
 Requires-Dist: flask-cors; extra == "server"
 Requires-Dist: requests; extra == "server"
 Requires-Dist: platformdirs; extra == "server"
+Provides-Extra: desktop
+Requires-Dist: pywebview; extra == "desktop"
 Provides-Extra: masked-curve-fit
 Requires-Dist: numdifftools; extra == "masked-curve-fit"
 Provides-Extra: nexus-files
@@ -40,6 +42,7 @@ Requires-Dist: requests; extra == "all"
 Requires-Dist: numdifftools; extra == "all"
 Requires-Dist: h5py; extra == "all"
 Requires-Dist: platformdirs; extra == "all"
+Requires-Dist: pywebview; extra == "all"
 Dynamic: license-file
 
 ============================
@@ -98,8 +101,24 @@ For the very latest development version use the following::
 
     pip install "git+https://github.com/reductus/reductus.git#egg=reductus[all]"
 
-Method 2: Docker Compose
-~~~~~~~~~~~~~~~~~~~~~~~~
+Method 2: Offline install (no internet)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The ``vendor/`` directory contains pre-downloaded wheel files for Windows x64
+and Linux x64 (Python 3.13). To install on a machine with no internet access,
+copy the repo (including ``vendor/``) to the target machine and run::
+
+    pip install --no-index --find-links vendor/ ".[all]"
+
+To refresh or add wheels for a different platform or Python version, run
+``pip download`` on an internet-connected machine::
+
+    pip download -d vendor/ --platform <PLATFORM> --python-version 3.13 --only-binary=:all: ".[all]" setuptools wheel
+
+where ``<PLATFORM>`` is e.g. ``win_amd64``, ``manylinux2014_x86_64``, or
+``macosx_11_0_arm64``.
+
+Method 3: Docker Compose
+~~~~~~~~~~~~~~~~~~~~~~~~~
 This is the easiest way to get started.  Clone the repo, the change directories
 into the repository and run::
 
@@ -129,7 +148,7 @@ install and use that instead of localhost, e.g. ::
 *In my case it was http://192.168.99.100:8000/webreduce/index.html*
 
 
-Method 3: Run from repo (development)
+Method 4: Run from repo (development)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Clone the repo, then install in "editable" mode (might be a good idea to make
 a virtualenv first)::
@@ -162,7 +181,7 @@ web client.  It is not a sticky setting at the moment, so it gets reset
 to checked every time you reload the client page. You can set the default
 as `check_mtimes: false` in `web_gui/webreduce/js/menu.js`.
 
-Method 4: Run from repo (production)
+Method 5: Run from repo (production)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 After testing your fixes you can check that they work in the production server.

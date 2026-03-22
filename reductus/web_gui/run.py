@@ -36,7 +36,7 @@ def main():
         help='run batch reduction without server'
     )
     batch_parser.add_argument('--template', required=True, help='path to template JSON file')
-    batch_parser.add_argument('--files', help='glob pattern for data files (e.g., "D:\\Data\\*.nxs")')
+    batch_parser.add_argument('--files', nargs='+', help='data file paths (e.g., "D:\\Data\\file.nxs")')
     batch_parser.add_argument('--data-dir', help='directory to search for data files')
     batch_parser.add_argument('--glob-pattern', default='**/*', help='glob pattern for files in data_dir (default: "**/*")')
     batch_parser.add_argument('-i', '--instruments', nargs='+', help='instruments to load (overrides config)')
@@ -147,7 +147,7 @@ def _run_batch(args):
 
     print("Running template...")
     result = template.run(
-        files=args.files.split() if args.files else None,
+        files=args.files if args.files else None,
         data_dir=args.data_dir,
         glob_pattern=args.glob_pattern,
         node=args.node,

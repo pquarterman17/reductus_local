@@ -263,6 +263,10 @@ def estimate_incident(observed_rate, tau_NP, tau_P, above=False):
     rate only causes a small change in observed rate.
     """
 
+    # Ensure tau values are scalars (may arrive as arrays for per-channel deadtimes)
+    tau_NP = [np.asarray(tau_NP[0]).flat[0], np.asarray(tau_NP[1]).flat[0]]
+    tau_P = [np.asarray(tau_P[0]).flat[0], np.asarray(tau_P[1]).flat[0]]
+
     # Nonparalyzing dead time only
     if tau_P[0] == 0.:
         # Use direct calculation for pure non-paralyzing models

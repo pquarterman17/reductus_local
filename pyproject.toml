@@ -49,6 +49,8 @@ version = { attr = "reductus.__version__" }
 [tool.setuptools.packages.find]
 include = ["reductus*"]
 
-[tool.pytest]
-addopts = "--maxfail=1 --disable-warnings"
+[tool.pytest.ini_options]
+python_files = "reductus/**/*.py"
+norecursedirs = ".* __pycache__ build _build dist *.egg* provisioning docker-compose *-old junk explore web_gui doc"
+addopts = "--ignore=setup.py --doctest-modules"
 testpaths = ["tests"]

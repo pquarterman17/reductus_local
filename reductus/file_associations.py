@@ -16,7 +16,7 @@ def register_file_associations():
     Register Reductus as the handler for .json template files.
 
     Supports:
-    - Windows: Registry entries (HKCU\Software\Classes)
+    - Windows: Registry entries (HKCU\\Software\\Classes)
     - macOS: Not implemented (requires user consent via system settings)
     - Linux: .desktop file in ~/.local/share/applications
 

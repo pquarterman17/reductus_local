@@ -79,19 +79,11 @@ def create_app(config=None):
             if return_type not in ["application/json", "application/msgpack"]:
                 # fall back to application/json for debugging GET requests
                 return_type = "application/json"
-            if return_type not in ["application/json", "application/msgpack"]:
-                code = 406
-                content = {'exception': 
-                    'no valid Accept return type provided. \
-                    (leave unspecified or use one of application/json or application/msgpack)'}
-                return_type = "application/json"
-                packed = json.dumps(content)
+            content = mfunc(*args, **real_kwargs)
+            if return_type == "application/msgpack":
+                packed = msgpack_converter.packb(content, use_bin_type=True)
             else:
-                content = mfunc(*args, **real_kwargs)
-                if return_type == "application/msgpack":
-                    packed = msgpack_converter.packb(content, use_bin_type=True)
-                else:
-                    packed = json.dumps(content)
+                packed = json.dumps(content)
 
             response = make_response(packed)
             response.headers['Content-Type'] = return_type

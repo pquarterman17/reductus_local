@@ -258,7 +258,13 @@ class Template:
                         node_idx, field_name = parts
                         config.setdefault(node_idx, {})[field_name] = value
                     else:
-                        config.setdefault(key, {}).update(value if isinstance(value, dict) else {})
+                        if not isinstance(value, dict):
+                            raise TypeError(
+                                f"Field override for node '{key}' must be a dict, "
+                                f"got {type(value).__name__}. Use 'node:field' syntax "
+                                f"for individual field overrides."
+                            )
+                        config.setdefault(key, {}).update(value)
 
             # Determine target node (default to last)
             num_modules = len(self.template_def.get("modules", []))
@@ -349,8 +355,15 @@ class ReductionResult:
 
             # Get export data from bundle
             logger.debug(f"Exporting data as format: {fmt}")
-            export_data = self.bundle.get_export(export_type=fmt)
-            values = export_data.get("values", [])
+            try:
+                export_data = self.bundle.get_export(export_type=fmt)
+                values = export_data.get("values", [])
+            except ValueError:
+                logger.warning(
+                    f"Export type '{fmt}' not available for "
+                    f"{self.bundle.datatype.id}; falling back to str()"
+                )
+                values = self.bundle.values
             logger.info(f"Exporting {len(values)} values")
 
             # Write each value to a file

@@ -20,3 +20,12 @@ __pycache__
 **/files_cache/
 **/cache/
 ORIG_HEAD
+
+# Packaging / build environments (release artifacts are attached to GitHub Releases)
+/.build-venv/
+/build_exe/
+/dist_exe/
+/release/
+/reductus/web_gui/webreduce/node_modules/
+# Ship the built web client (dist/) but not its dev-only source maps
+/reductus/web_gui/webreduce/dist/**/*.map

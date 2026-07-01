@@ -31,9 +31,19 @@ dependencies = [
     "uncertainties",
     "docutils",
     "pytz",
+    # Web server runtime: the `reductus` console command IS the web/desktop
+    # server, so these are mandatory rather than optional. Keeping them here
+    # means a bare `pip install reductus` never crashes on a missing flask_cors.
+    "msgpack",
+    "flask",
+    "flask-cors",
+    "requests",
+    "platformdirs",
 ]
 
 [project.optional-dependencies]
+# Retained for backward compatibility; these packages are now part of the core
+# install (see dependencies above), so `.[server]` is effectively a no-op.
 server = ["msgpack", "flask", "flask-cors", "requests", "platformdirs"]
 desktop = ["pywebview"]
 masked_curve_fit = ["numdifftools"]

@@ -40,8 +40,13 @@ if errorlevel 1 (
 call ".venv\Scripts\activate.bat"
 
 REM --- Install offline from vendored wheels ----------------------------------
+REM  Force-reinstall so the vendored setuptools/wheel REPLACE any stale copy the
+REM  venv seeded from the base interpreter. Some Python builds seed an old
+REM  setuptools that crashes under Python 3.12+ (pkgutil.ImpImporter was
+REM  removed); without --force-reinstall pip reports "already satisfied" and the
+REM  broken copy is used to build reductus in the next step.
 echo Installing build backend from local wheels...
-python -m pip install --no-index --find-links vendor setuptools wheel
+python -m pip install --no-index --find-links vendor --upgrade --force-reinstall setuptools wheel
 if errorlevel 1 (
     echo ERROR: could not install setuptools/wheel from vendor\.
     pause

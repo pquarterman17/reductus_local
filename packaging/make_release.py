@@ -44,13 +44,28 @@ You need Python 3.10, 3.11, 3.12, or 3.13 installed (64-bit) and on PATH.
 
   1. Unzip this folder anywhere (e.g. your Desktop).
   2. Double-click  install.bat   (creates a local .venv from the bundled
-     wheels in vendor\\ - this takes a minute).
+     wheels in vendor\\ - this takes a few minutes).
   3. Double-click  run.bat       (opens reductus in a native window).
 
 To check your Python version, open Command Prompt and run:  python --version
 
-If install.bat reports "no wheels matching your Python version", your Python
-is outside the 3.10-3.13 range this bundle supports.
+Troubleshooting
+---------------
+* install.bat logs everything it does to install.log in this folder, and
+  run.bat logs to run.log. If anything fails, read those files first.
+* If a window flashes open and closes and install.log was NOT created,
+  Windows blocked the script before it could run (antivirus or group
+  policy). Open Command Prompt yourself so the output stays visible:
+      cd /d "<this folder>"
+      install.bat
+* If install.bat reports "no wheels matching your Python version", your
+  Python is outside the 3.10-3.13 range this bundle supports.
+* Fully manual install (same steps as install.bat), from Command Prompt
+  in this folder:
+      py -3 -m venv --clear .venv
+      .venv\\Scripts\\python -m pip install --no-index --find-links vendor --force-reinstall setuptools wheel
+      .venv\\Scripts\\python -m pip install --no-index --find-links vendor --no-build-isolation ".[all]"
+      .venv\\Scripts\\reductus desktop
 """
 
 DESKTOP_README = """\
@@ -108,6 +123,22 @@ def build_offline_zip(ver: str) -> Path:
     with zipfile.ZipFile(src_zip) as z:
         z.extractall(stage)
     src_zip.unlink()
+
+    # git archive exports every TRACKED file, so an accidentally committed
+    # build environment rides straight into the release (this shipped a full
+    # dev .venv once - pip then saw its packages as "already satisfied" on
+    # target machines and the app crashed with no visible error).
+    junk = sorted(
+        p for p in stage.rglob("*")
+        if p.name in (".venv", "__pycache__") or p.name.endswith(".egg-info")
+    )
+    if junk:
+        listing = "\n  ".join(str(p.relative_to(stage)) for p in junk[:10])
+        sys.exit(
+            "ERROR: build-environment files are git-tracked and would ship "
+            f"in the release:\n  {listing}\n"
+            "Untrack them (git rm -r --cached <path>), commit, and rebuild."
+        )
 
     vendor_dst = stage / "vendor"
     if vendor_dst.exists():

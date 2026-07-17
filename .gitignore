@@ -21,6 +21,12 @@ __pycache__
 **/cache/
 ORIG_HEAD
 
+# Virtual environments and installer artifacts (never ship these)
+/.venv/
+*.egg-info/
+install.log
+run.log
+
 # Packaging / build environments (release artifacts are attached to GitHub Releases)
 /.build-venv/
 /build_exe/

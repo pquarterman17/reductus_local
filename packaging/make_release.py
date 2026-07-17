@@ -104,14 +104,17 @@ def rmtree_robust(path: Path):
     """rmtree that survives OneDrive: synced files get read-only attributes
     and the sync client holds transient locks, both of which make a plain
     shutil.rmtree fail with WinError 5."""
-    if not path.exists():
-        return
-    for p in path.rglob("*"):
-        try:
-            os.chmod(p, stat.S_IWRITE)
-        except OSError:
-            pass
     for attempt in range(5):
+        if not path.exists():
+            return
+        # Windows refuses to delete read-only files AND read-only directories
+        # (RemoveDirectory fails ACCESS_DENIED); clear the attribute on the
+        # root and everything under it before each attempt.
+        for p in [path, *path.rglob("*")]:
+            try:
+                os.chmod(p, stat.S_IWRITE)
+            except OSError:
+                pass
         try:
             shutil.rmtree(path)
             return

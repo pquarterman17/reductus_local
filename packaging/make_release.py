@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Assemble the Windows release artifacts for reductus.
 
@@ -24,14 +24,19 @@ Then:  python packaging/make_release.py
 """
 import os
 import shutil
+import stat
 import subprocess
 import sys
+import time
 import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RELEASE = ROOT / "release"
-STAGE = RELEASE / "stage"
+# Stage outside the repo: the repo lives in OneDrive, and staging thousands of
+# files there churns the sync client and makes deletes flaky (WinError 5 on
+# locked dirs). Only the final zips belong in release/.
+STAGE = Path(os.environ.get("LOCALAPPDATA", str(RELEASE))) / "reductus-release-stage"
 EXE_DIR = ROOT / "dist_exe" / "reductus"
 WIN_VENDOR = RELEASE / "vendor"
 
@@ -95,6 +100,27 @@ def get_version():
     return out.decode().strip()
 
 
+def rmtree_robust(path: Path):
+    """rmtree that survives OneDrive: synced files get read-only attributes
+    and the sync client holds transient locks, both of which make a plain
+    shutil.rmtree fail with WinError 5."""
+    if not path.exists():
+        return
+    for p in path.rglob("*"):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+        except OSError:
+            pass
+    for attempt in range(5):
+        try:
+            shutil.rmtree(path)
+            return
+        except OSError:
+            if attempt == 4:
+                raise
+            time.sleep(1.0)
+
+
 def zip_tree(folder: Path, zip_path: Path, arc_prefix: str):
     """Zip everything under `folder`, placing it under arc_prefix/ in the zip."""
     count = 0
@@ -112,8 +138,7 @@ def build_offline_zip(ver: str) -> Path:
 
     name = f"reductus-{ver}-windows-offline"
     stage = STAGE / name
-    if stage.exists():
-        shutil.rmtree(stage)
+    rmtree_robust(stage)
     stage.mkdir(parents=True)
 
     # Clean, git-tracked source tree (includes built webreduce/dist/, install.bat,
@@ -141,8 +166,7 @@ def build_offline_zip(ver: str) -> Path:
         )
 
     vendor_dst = stage / "vendor"
-    if vendor_dst.exists():
-        shutil.rmtree(vendor_dst)
+    rmtree_robust(vendor_dst)
     shutil.copytree(WIN_VENDOR, vendor_dst)
 
     (stage / "HOW_TO_RUN.txt").write_text(OFFLINE_README, encoding="utf-8")
@@ -161,8 +185,7 @@ def build_desktop_zip(ver: str) -> Path:
 
     name = f"reductus-{ver}-windows-desktop"
     stage = STAGE / name
-    if stage.exists():
-        shutil.rmtree(stage)
+    rmtree_robust(stage)
     stage.mkdir(parents=True)
 
     # Copy the whole onedir bundle, then drop in a readme.

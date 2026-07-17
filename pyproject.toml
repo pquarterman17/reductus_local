@@ -45,10 +45,12 @@ dependencies = [
 # Retained for backward compatibility; these packages are now part of the core
 # install (see dependencies above), so `.[server]` is effectively a no-op.
 server = ["msgpack", "flask", "flask-cors", "requests", "platformdirs"]
-desktop = ["pywebview"]
+# pywebview < 5 crashes with pythonnet 3.x on Windows (NullReferenceException
+# in the WinForms backend at window creation), so require the modern series.
+desktop = ["pywebview>=5"]
 masked_curve_fit = ["numdifftools"]
 nexus_files = ["h5py"]
-all = ["msgpack", "flask", "flask-cors", "requests", "numdifftools", "h5py", "platformdirs", "pywebview"]
+all = ["msgpack", "flask", "flask-cors", "requests", "numdifftools", "h5py", "platformdirs", "pywebview>=5"]
 
 [project.scripts]
 reductus = "reductus.web_gui.run:main"

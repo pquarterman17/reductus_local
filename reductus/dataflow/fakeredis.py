@@ -2,23 +2,64 @@
 Redis-like interface to an in-memory cache
 
 :class:`MemoryCache` provides a minimal redis-like interface to an in memory
-cache.  If the *pylru* package is available, then this provides a least
-recently used cache, otherwise the cache grows without bound.
+cache.  It always uses least-recently-used eviction so the cache stays bounded:
+the optional *pylru* package when installed, otherwise the equivalent
+standard-library :class:`_SimpleLRU`.
 """
 from __future__ import print_function
 
 import os
 import threading
-import warnings
+from collections import OrderedDict
+
+
+class _SimpleLRU(object):
+    """Size-bounded least-recently-used cache using only the standard library.
+
+    A drop-in replacement for ``pylru.lrucache(size)`` covering the subset of
+    behaviour :class:`MemoryCache` relies on: item get/set/delete, ``in`` and
+    ``keys()``.  Used when the optional *pylru* package is not installed, so the
+    cache is always bounded instead of growing without limit (which matters for
+    long-running desktop/server sessions).
+    """
+    def __init__(self, size=1000):
+        self.size = max(1, int(size))
+        self._data = OrderedDict()
+
+    def __getitem__(self, key):
+        value = self._data[key]         # raises KeyError if missing, like dict
+        self._data.move_to_end(key)     # mark as most-recently used
+        return value
+
+    def __setitem__(self, key, value):
+        if key in self._data:
+            self._data.move_to_end(key)
+        self._data[key] = value
+        while len(self._data) > self.size:
+            self._data.popitem(last=False)   # evict least-recently used
+
+    def __delitem__(self, key):
+        del self._data[key]
+
+    def __contains__(self, key):
+        return key in self._data
+
+    def keys(self):
+        return self._data.keys()
+
+    def __len__(self):
+        return len(self._data)
+
 
 def lrucache(size):
     try:
-        #raise ImportError("no pylru")
         import pylru
         return pylru.lrucache(size)
     except ImportError:
-        warnings.warn("pylru not available; using simple cache with no size limit")
-        return {}
+        # pylru is an optional third-party dependency; fall back to an
+        # equivalent stdlib LRU so the cache never grows without bound. No
+        # warning: this fallback is fully functional, not a degraded mode.
+        return _SimpleLRU(size)
 
 
 class MemoryCache(object):
@@ -27,8 +68,8 @@ class MemoryCache(object):
 
     Use this for running tests without having to start up the redis server.
 
-    *size* is the number of elements to cache (ignored if the pylru package
-    is not available).
+    *size* is the maximum number of elements to cache; the least-recently-used
+    entries are evicted once the cache is full.
     """
     def __init__(self, size=1000):
         self.cache = lrucache(size)

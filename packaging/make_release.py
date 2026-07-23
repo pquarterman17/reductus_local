@@ -52,6 +52,10 @@ You need Python 3.10, 3.11, 3.12, or 3.13 installed (64-bit) and on PATH.
      wheels in vendor\\ - this takes a few minutes).
   3. Double-click  run.bat       (opens reductus in a native window).
 
+To uninstall, double-click  uninstall.bat  (removes the .venv and offers to
+delete the settings/cache reductus keeps outside this folder), then delete
+this folder.
+
 To check your Python version, open Command Prompt and run:  python --version
 
 Troubleshooting
@@ -84,6 +88,9 @@ No installation and no Python required.
 
 A native window opens with the reductus interface. The first launch may take a
 few seconds while the bundled runtime unpacks. Close the window to exit.
+
+To uninstall, double-click  uninstall.bat  (clears the settings and cache
+reductus keeps outside this folder), then delete this folder.
 """
 
 
@@ -191,9 +198,13 @@ def build_desktop_zip(ver: str) -> Path:
     rmtree_robust(stage)
     stage.mkdir(parents=True)
 
-    # Copy the whole onedir bundle, then drop in a readme.
+    # Copy the whole onedir bundle, then drop in a readme + the uninstaller.
+    # (The offline zip gets uninstall.bat for free via `git archive`; the
+    # desktop stage is copied from dist_exe/, which has no repo files, so it
+    # must be added explicitly here.)
     shutil.copytree(EXE_DIR, stage, dirs_exist_ok=True)
     (stage / "README.txt").write_text(DESKTOP_README, encoding="utf-8")
+    shutil.copy2(ROOT / "uninstall.bat", stage / "uninstall.bat")
 
     out = RELEASE / f"{name}.zip"
     if out.exists():
